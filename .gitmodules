@@ -1,0 +1,18 @@
+[submodule "phoenix-rtos-kernel"]
+	path = phoenix-rtos-kernel
+	url = https://github.com/phoenix-rtos/phoenix-rtos-kernel
+[submodule "libphoenix"]
+	path = libphoenix
+	url = https://github.com/phoenix-rtos/libphoenix
+[submodule "phoenix-rtos-devices"]
+	path = phoenix-rtos-devices
+	url = https://github.com/phoenix-rtos/phoenix-rtos-devices
+[submodule "phoenix-rtos-filesystems"]
+	path = phoenix-rtos-filesystems
+	url = https://github.com/phoenix-rtos/phoenix-rtos-filesystems
+[submodule "phoenix-rtos-coreutils"]
+	path = phoenix-rtos-coreutils
+	url = https://github.com/phoenix-rtos/phoenix-rtos-coreutils
+[submodule "phoenix-rtos-hostutils"]
+	path = phoenix-rtos-hostutils
+	url = https://github.com/phoenix-rtos/phoenix-rtos-hostutils
