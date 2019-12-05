@@ -1,0 +1,30 @@
+#
+# Phoenix-RTOS
+#
+# Shell script for besmart project
+#
+# Copyright 2019 Phoenix Systems
+# Author: Aleksander Kaminski, Lukasz Kosinski
+#
+# This file is part of Phoenix-RTOS.
+#
+# %LICENSE%
+
+set -e
+
+CROSS=arm-phoenix-
+TARGET=armv7-imxrt
+TARGET_FAMILY=`echo $TARGET | awk -F- '{ print $1 }'`
+TARGET_SUBFAMILY=$TARGET_FAMILY-`echo $TARGET | awk -F- '{ print $2 }'`
+
+#
+# Project specific build
+#
+b_build() { :; }
+
+b_image() {
+	./phoenix-rtos-kernel/scripts/mkimg-imxrt.sh "_build/phoenix-${TARGET}.elf" "Ximxrt-multi Xdummyfs Xpsh" "_build/phoenix-${TARGET}.img" \
+		_build/imxrt-multi _build/dummyfs _build/psh
+}
+
+b_update_pkg() { :; }
