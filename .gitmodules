@@ -4,6 +4,9 @@
 [submodule "libphoenix"]
 	path = libphoenix
 	url = https://github.com/phoenix-rtos/libphoenix
+[submodule "phoenix-rtos-build"]
+	path = phoenix-rtos-build
+	url = https://github.com/phoenix-rtos/phoenix-rtos-build.git
 [submodule "phoenix-rtos-devices"]
 	path = phoenix-rtos-devices
 	url = https://github.com/phoenix-rtos/phoenix-rtos-devices
