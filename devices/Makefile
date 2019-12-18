@@ -82,4 +82,5 @@ $(T1):
 	@echo >/dev/null
 else
 	include ad7779/Makefile
+    include afe031/Makefile
 endif
