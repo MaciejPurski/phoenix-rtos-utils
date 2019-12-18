@@ -4,7 +4,7 @@
  * i.MX RT AD7779 driver.
  *
  * Copyright 2018, 2019 Phoenix Systems
- * Author: Krystian Wasik, Aleksander Kaminski
+ * Author: Krystian Wasik, Aleksander Kaminski, Hubert Buczynski
  *
  * This file is part of Phoenix-RTOS.
  *
@@ -115,59 +115,42 @@ static struct {
 static void gpio_setPin(int gpio, int pin, int state)
 {
 	msg_t msg;
-	multi_i_t imsg;
+	multi_i_t *imsg = NULL;
 
-	msg.type = mtWrite;
-	msg.i.data = &imsg;
-	msg.i.size = sizeof(imsg);
+	msg.type = mtDevCtl;
+	msg.i.data = NULL;
+	msg.i.size = 0;
 	msg.o.data = NULL;
 	msg.o.size = 0;
 
-	imsg.type = gpio;
-	imsg.gpio.type = gpio_port;
-	imsg.gpio.port.val = !!state << pin;
-	imsg.gpio.port.mask = 1 << pin;
+	imsg = (multi_i_t *)msg.i.raw;
+
+	imsg->id = gpio;
+	imsg->gpio.type = gpio_set_port;
+	imsg->gpio.port.val = !!state << pin;
+	imsg->gpio.port.mask = 1 << pin;
 
 	msgSend(ad7779_common.multidrv.port, &msg);
 }
 
-#if 0
-static int gpio_getPin(int gpio, int pin)
-{
-	msg_t msg;
-	multi_i_t imsg;
-	multi_o_t omsg;
-
-	msg.type = mtRead;
-	msg.i.data = &imsg;
-	msg.i.size = sizeof(imsg);
-	msg.o.data = &omsg;
-	msg.o.size = sizeof(omsg);
-
-	imsg.type = gpio;
-	imsg.gpio.type = gpio_port;
-
-	msgSend(ad7779_common.multidrv.port, &msg);
-
-	return !!(omsg.val & (1 << pin));
-}
-#endif
 
 static void gpio_setDir(int gpio, int pin, int dir)
 {
 	msg_t msg;
-	multi_i_t imsg;
+	multi_i_t *imsg = NULL;
 
-	msg.type = mtWrite;
-	msg.i.data = &imsg;
-	msg.i.size = sizeof(imsg);
+	msg.type = mtDevCtl;
+	msg.i.data = NULL;
+	msg.i.size = 0;
 	msg.o.data = NULL;
 	msg.o.size = 0;
 
-	imsg.type = gpio;
-	imsg.gpio.type = gpio_dir;
-	imsg.gpio.port.val = !!dir << pin;
-	imsg.gpio.port.mask = 1 << pin;
+	imsg = (multi_i_t *)msg.i.raw;
+
+	imsg->id = gpio;
+	imsg->gpio.type = gpio_set_dir;
+	imsg->gpio.dir.val = !!dir << pin;
+	imsg->gpio.dir.mask = 1 << pin;
 
 	msgSend(ad7779_common.multidrv.port, &msg);
 }
@@ -185,7 +168,7 @@ static int lpspi_transaction(char *buff, size_t bufflen)
 	msg.o.data = buff;
 	msg.o.size = bufflen;
 
-	imsg->type = id_spi4;
+	imsg->id = id_spi4;
 	imsg->spi.type = spi_transaction;
 	imsg->spi.transaction.cs = 0;
 	imsg->spi.transaction.frameSize = bufflen;
@@ -207,13 +190,13 @@ static int lpspi_config(void)
 	msg.o.data = NULL;
 	msg.o.size = 0;
 
-	imsg->type = id_spi4;
+	imsg->id = id_spi4;
 	imsg->spi.type = spi_config;
 	imsg->spi.config.cs = 0;
 	imsg->spi.config.mode = spi_mode_0;
 	imsg->spi.config.endian = spi_msb;
-	imsg->spi.config.sckDiv = 0;
-	imsg->spi.config.prescaler = 7;
+	imsg->spi.config.sckDiv = 4;
+	imsg->spi.config.prescaler = 3;
 
 	return msgSend(ad7779_common.multidrv.port, &msg);
 }
@@ -547,13 +530,13 @@ static int ad7779_gpio_init(void)
 	platformctl(&pctl);
 
 	pctl.type = pctl_iopad;
-
 	pctl.iopad.hys = 0;
-	pctl.iopad.pus = 1;
-	pctl.iopad.pue = 1;
-	pctl.iopad.pke = 0;
+	pctl.iopad.pus = 0;
+	pctl.iopad.pue = 0;
+	pctl.iopad.pke = 1;
 	pctl.iopad.ode = 0;
-	pctl.iopad.speed = 1;
+	pctl.iopad.speed = 2;
+	pctl.iopad.dse = 6;
 	pctl.iopad.dse = 3;
 
 	/* /RESET */
@@ -564,10 +547,11 @@ static int ad7779_gpio_init(void)
 	platformctl(&pctl);
 
 	/* Set states */
-	gpio_setPin(2, 5, 0);
-	gpio_setPin(2, 6, 1);
-	gpio_setDir(2, 5, 1);
-	gpio_setDir(2, 6, 1);
+	gpio_setDir(id_gpio2, 5, 1);
+	gpio_setDir(id_gpio2, 6, 1);
+
+	gpio_setPin(id_gpio2, 5, 1);
+	gpio_setPin(id_gpio2, 6, 1);
 
 	return AD7779_OK;
 }
@@ -575,9 +559,9 @@ static int ad7779_gpio_init(void)
 
 static int ad7779_reset(void)
 {
-	gpio_setPin(2, 5, 0);
+	gpio_setPin(id_gpio2, 5, 0);
 	usleep(100000);
-	gpio_setPin(2, 5, 1);
+	gpio_setPin(id_gpio2, 5, 1);
 	usleep(100000);
 
 	return AD7779_OK;
@@ -627,3 +611,4 @@ int ad7779_init(void)
 
 	return AD7779_OK;
 }
+
