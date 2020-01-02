@@ -1,7 +1,7 @@
 /*
  * Phoenix-RTOS
  *
- * i.MX RT AD7779 driver.
+ * i.MX RT1064 besmart AD7779 driver.
  *
  * Copyright 2018, 2019 Phoenix Systems
  * Author: Krystian Wasik, Aleksander Kaminski
@@ -27,6 +27,33 @@
 #define AD7779_NUM_OF_CHANNELS          (8)
 #define AD7779_NUM_OF_BITS              (24)
 
+#define AD7779_MAX_SAMPLE_RATE_LP       (8000)
+#define AD7779_MAX_SAMPLE_RATE_HR       (16000)
+
+typedef enum {
+	ad7779_ref__ext = 0,
+	ad7779_ref__int,
+	ad7779_ref__supply,
+	ad7779_ref__ext_inverted
+} ad7779_ref_t;
+
+typedef enum {
+	ad7779_meter__280mV = 0b0010,
+	ad7779_meter__ext,
+	ad7779_meter__ext_inverted,
+	ad7779_meter__ext_negative,
+	ad7779_meter__int,
+	ad7779_meter__int_inverted,
+	ad7779_meter__int_positive,
+	ad7779_meter__ext_positive
+} ad7779_meter_t;
+
+typedef enum {
+	ad7779_chmode__normal = 0b00,
+	ad7779_chmode__meter_rx,
+	ad7779_chmode__ref_monitor
+} ad7779_chmode_t;
+
 typedef enum {
 	ad7779_mode__low_power,
 	ad7779_mode__high_resolution,
@@ -34,14 +61,25 @@ typedef enum {
 
 int ad7779_init(void);
 
+int ad7779_set_adc_mux(ad7779_ref_t ref, ad7779_meter_t meter);
+
 int ad7779_get_mode(ad7779_mode_t *mode);
 int ad7779_set_mode(ad7779_mode_t mode);
 
 int ad7779_get_sampling_rate(uint32_t *fs);
 int ad7779_set_sampling_rate(uint32_t fs);
 
+int ad7779_get_channel_mode(uint8_t channel, ad7779_chmode_t *mode);
+int ad7779_set_channel_mode(uint8_t channel, ad7779_chmode_t mode);
+
 int ad7779_get_channel_gain(uint8_t channel, uint8_t *gain);
 int ad7779_set_channel_gain(uint8_t channel, uint8_t gain);
+
+int ad7779_get_channel_offset(uint8_t channel, uint32_t *offset);
+int ad7779_set_channel_offset(uint8_t channel, uint32_t offset);
+
+int ad7779_get_channel_gain_correction(uint8_t channel, uint32_t *gain);
+int ad7779_set_channel_gain_correction(uint8_t channel, uint32_t gain);
 
 /* For debugging purposes */
 int ad7779_print_status(void);

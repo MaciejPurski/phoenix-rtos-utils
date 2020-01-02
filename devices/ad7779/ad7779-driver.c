@@ -1,18 +1,18 @@
 /*
  * Phoenix-RTOS
  *
- * i.MX 6ULL AD7779 driver.
+ * i.MX RT1064 besmart AD7779 driver.
  *
- * Copyright 2018 Phoenix Systems
- * Author: Krystian Wasik
+ * Copyright 2018, 2020 Phoenix Systems
+ * Author: Krystian Wasik, Marcin Baran
  *
  * This file is part of Phoenix-RTOS.
  *
  * %LICENSE%
  */
 
-#include "ecspi.h"
 #include "ad7779.h"
+#include "edma.h"
 #include "adc-api.h"
 
 #include <stdio.h>
@@ -20,17 +20,16 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <sdma.h>
-
 #include <sys/stat.h>
-#include <sys/threads.h>
 #include <sys/types.h>
 #include <sys/msg.h>
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/platform.h>
+#include <sys/threads.h>
+#include <sys/interrupt.h>
 
-#include <phoenix/arch/imx6ull.h>
+#include <phoenix/arch/imxrt.h>
 
 #define COL_RED     "\033[1;31m"
 #define COL_CYAN    "\033[1;36m"
@@ -41,106 +40,176 @@
 #define log_info(fmt, ...)      do { printf(LOG_TAG COL_CYAN fmt COL_NORMAL "\n", ##__VA_ARGS__); } while (0)
 #define log_error(fmt, ...)     do { printf(LOG_TAG COL_RED fmt COL_NORMAL "\n", ##__VA_ARGS__); } while (0)
 
-#define SDMA_DEVICE_FILE_NAME           ("/dev/sdma/ch07")
+#define SAI1_RX_DMA_REQUEST         (19)
+#define SAI1_RX_DMA_CHANNEL         (7)
 
-#define ADC_BUFFER_SIZE                 (SIZE_PAGE)
+/* Full buffer should store 0.1 s of data for each channel */
+#define ADC_BUFFER_SIZE             (4 * AD7779_NUM_OF_CHANNELS * AD7779_MAX_SAMPLE_RATE_HR / 10)
 
 typedef volatile struct {
-	uint32_t TCSR;
-	uint32_t TCR1;
-	uint32_t TCR2;
-	uint32_t TCR3;
-	uint32_t TCR4;
-	uint32_t TCR5;
-	uint32_t reserved0[2];
-	uint32_t TDR0;
-	uint32_t reserved1[7];
-	uint32_t TFR0;
-	uint32_t reserved2[7];
-	uint32_t TMR;
-	uint32_t reserved3[7];
-	uint32_t RCSR;
-	uint32_t RCR1;
-	uint32_t RCR2;
-	uint32_t RCR3;
-	uint32_t RCR4;
-	uint32_t RCR5;
-	uint32_t reserved4[2];
-	uint32_t RDR0;
-	uint32_t reserved5[7];
-	uint32_t RFR0;
-	uint32_t reserved6[7];
-	uint32_t RMR;
-	uint32_t reserved7[7];
-	uint32_t MCR;
+	uint32_t VERID; //0x00
+	uint32_t PARAM; //0x04
+	uint32_t TCSR;  //0x08
+	uint32_t TCR1;  //0x0C
+	uint32_t TCR2;  //0x10
+	uint32_t TCR3;  //0x14
+	uint32_t TCR4;  //0x18
+	uint32_t TCR5;  //0x1C
+	uint32_t TDR0;  //0x20
+	uint32_t TDR1;  //0x24
+	uint32_t TDR2;  //0x28
+	uint32_t TDR3;  //0x2C
+	uint32_t reserved0[4];  //0x30-0x3C
+	uint32_t TFR0;  //0x40
+	uint32_t TFR1;  //0x44
+	uint32_t TFR2;  //0x48
+	uint32_t TFR3;  //0x4C
+	uint32_t reserved1[4];  //0x50-0x5C
+	uint32_t TMR;  //0x60
+	uint32_t reserved2[9];  //0x64-0x84
+	uint32_t RCSR;  //0x88
+	uint32_t RCR1;  //0x8C
+	uint32_t RCR2;  //0x90
+	uint32_t RCR3;  //0x94
+	uint32_t RCR4;  //0x98
+	uint32_t RCR5;  //0x9C
+	uint32_t RDR0;  //0xA0
+	uint32_t RDR1;  //0xA4
+	uint32_t RDR2;  //0xA8
+	uint32_t RDR3;  //0xAC
+	uint32_t reserved3[4];  //0xB0-0xBC
+	uint32_t RFR0;  //0xC0
+	uint32_t RFR1;  //0xC4
+	uint32_t RFR2;  //0xC8
+	uint32_t RFR3;  //0xCC
+	uint32_t reserved4[4];  //0xD0-0xDC
+	uint32_t RMR;  //0xE0
 } sai_t;
 
 struct driver_common_s
 {
 	uint32_t port;
 
+	volatile struct edma_tcd_s
+		__attribute__((aligned(32))) tcds[2];
+
 	addr_t buffer0_paddr;
 	addr_t buffer1_paddr;
-
-	sdma_t sdma;
-
-	sdma_buffer_desc_t *bd;
 
 	sai_t *sai;
 	addr_t sai_paddr;
 
+	addr_t ocram_ptr;
+
+	handle_t irq_cond, irq_handle;
+
 	int enabled;
 } common;
 
-#define SAI_FIFO_WATERMARK              (4)
+#define SAI_FIFO_WATERMARK          (8)
 
-#define SAI_RCR3_RCE_BIT                (1 << 16)
-#define SAI_RCSR_RE_BIT                 (1 << 31)
-#define SAI_RCSR_FRDE_BIT               (1 << 0)
+#define SAI_RCR3_RCE_BIT            (1 << 16)
+#define SAI_RCSR_RE_BIT             (1 << 31)
+#define SAI_RCSR_SR_BIT             (1 << 24)
+#define SAI_RCSR_FRDE_BIT           (1 << 0)
+
+#define TCD_CSR_INTMAJOR_BIT        (1 << 1)
+#define TCD_CSR_ESG_BIT             (1 << 4)
 
 static int sai_init(void)
 {
-	common.sai_paddr = 0x2030000; /* SAI3 */
-	common.sai = mmap(NULL, SIZE_PAGE, PROT_READ | PROT_WRITE, MAP_DEVICE, OID_PHYSMEM, common.sai_paddr);
+	common.sai_paddr = 0x40384000; /* SAI1 */
+	common.sai = mmap(NULL, _PAGE_SIZE, PROT_READ | PROT_WRITE,
+		MAP_DEVICE, OID_PHYSMEM, common.sai_paddr);
 	if (common.sai == MAP_FAILED)
 		return -1;
 
 	platformctl_t pctl;
 	pctl.action = pctl_set;
 	pctl.type = pctl_devclock;
-	pctl.devclock.dev = pctl_clk_sai3;
+	pctl.devclock.dev = pctl_clk_sai1;
 	pctl.devclock.state = 0b11;
 	platformctl(&pctl);
 
 	pctl.action = pctl_set;
 	pctl.type = pctl_iomux;
-	pctl.iomux.mux = pctl_mux_lcd_d10;
+	pctl.iomux.mux = pctl_mux_gpio_b0_14;
 	pctl.iomux.sion = 0;
-	pctl.iomux.mode = 1; /* ALT1 (SAI3_RX_SYNC) */
-	platformctl(&pctl);
-
-	pctl.action = pctl_set;
-	pctl.type = pctl_iomux;
-	pctl.iomux.mux = pctl_mux_lcd_d11;
-	pctl.iomux.sion = 0;
-	pctl.iomux.mode = 1; /* ALT1 (SAI3_RX_BCLK) */
-	platformctl(&pctl);
-
-	pctl.action = pctl_set;
-	pctl.type = pctl_iomux;
-	pctl.iomux.mux = pctl_mux_lcd_d14;
-	pctl.iomux.sion = 0;
-	pctl.iomux.mode = 1; /* ALT1 (SAI3_RX_DATA) */
+	pctl.iomux.mode = 3; /* ALT3 (SAI1_RX_SYNC) */
 	platformctl(&pctl);
 
 	pctl.action = pctl_set;
 	pctl.type = pctl_ioisel;
-	pctl.ioisel.isel = pctl_isel_sai3_rx;
-	pctl.ioisel.daisy = 1; /* Select LCD_DATA14 pad */
+	pctl.ioisel.isel = pctl_isel_sai1_rx_sync;
+	pctl.ioisel.daisy = 2; /* Select GPIO_B0_14 pad */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_iomux;
+	pctl.iomux.mux = pctl_mux_gpio_b0_15;
+	pctl.iomux.sion = 0;
+	pctl.iomux.mode = 3; /* ALT3 (SAI1_RX_BCLK) */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_ioisel;
+	pctl.ioisel.isel = pctl_isel_sai1_rx_bclk;
+	pctl.ioisel.daisy = 2; /* Select GPIO_B0_15 pad */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_iomux;
+	pctl.iomux.mux = pctl_mux_gpio_b1_00;
+	pctl.iomux.sion = 0;
+	pctl.iomux.mode = 3; /* ALT3 (SAI1_RX_DATA0) */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_ioisel;
+	pctl.ioisel.isel = pctl_isel_sai1_rx_data0;
+	pctl.ioisel.daisy = 2; /* Select GPIO_B1_00 pad */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_iomux;
+	pctl.iomux.mux = pctl_mux_gpio_b0_10;
+	pctl.iomux.sion = 0;
+	pctl.iomux.mode = 3; /* ALT3 (SAI1_RX_DATA1) */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_ioisel;
+	pctl.ioisel.isel = pctl_isel_sai1_rx_data1;
+	pctl.ioisel.daisy = 1; /* Select GPIO_B0_10 pad */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_iomux;
+	pctl.iomux.mux = pctl_mux_gpio_b0_11;
+	pctl.iomux.sion = 0;
+	pctl.iomux.mode = 3; /* ALT3 (SAI1_RX_DATA2) */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_ioisel;
+	pctl.ioisel.isel = pctl_isel_sai1_rx_data2;
+	pctl.ioisel.daisy = 1; /* Select GPIO_B0_11 pad */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_iomux;
+	pctl.iomux.mux = pctl_mux_gpio_b0_12;
+	pctl.iomux.sion = 0;
+	pctl.iomux.mode = 3; /* ALT3 (SAI1_RX_DATA3) */
+	platformctl(&pctl);
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_ioisel;
+	pctl.ioisel.isel = pctl_isel_sai1_rx_data3;
+	pctl.ioisel.daisy = 1; /* Select GPIO_B0_12 pad */
 	platformctl(&pctl);
 
 	/* Initialize SAI */
-	// sai->MCR |= 1 << 30; /* Set MCLK Output Enable */
 	common.sai->RCR1 = SAI_FIFO_WATERMARK;
 	common.sai->RCR2 = 0x0; /* External bit clock (slave mode) */
 	common.sai->RCR3 |= SAI_RCR3_RCE_BIT;
@@ -157,90 +226,153 @@ static void sai_rx_enable(void)
 	common.sai->RCSR |= SAI_RCSR_RE_BIT;
 }
 
+static void sai_rx_disable(void)
+{
+	common.sai->RCSR &= ~(SAI_RCSR_RE_BIT);
+	common.sai->RCSR &= ~(SAI_RCSR_SR_BIT);
+}
+
 static addr_t sai_get_rx_fifo_ptr(void)
 {
 	return (addr_t)(&(((sai_t*)common.sai_paddr)->RDR0));
 }
 
-static int sdma_configure(void)
+static int edma_error_handler(unsigned int n, void *arg)
+{
+	/* TODO: Store some info for debugging? Notify about it somehow? */
+	sai_rx_disable();
+	common.enabled = 0;
+	edma_clear_error(SAI1_RX_DMA_CHANNEL);
+
+	return 0;
+}
+
+static int edma_irq_handler(unsigned int n, void *arg)
+{
+	edma_clear_interrupt(SAI1_RX_DMA_CHANNEL);
+	return 0;
+}
+
+// static void edma_irq_thread(void *callback)
+// {
+// 	return;
+// }
+
+// void event_callback(int data)
+// {
+// 	(void)data;
+// };
+
+#define OCRAM2_BASE              (0x20200000)
+#define OCRAM2_END               (0x2027FFFF)
+
+/* Allocating OCRAM2 from the end */
+static addr_t ocram_alloc(size_t size)
+{
+	unsigned n = (size + _PAGE_SIZE - 1)/_PAGE_SIZE;
+	addr_t paddr = 0;
+
+	if (common.ocram_ptr + n*_PAGE_SIZE <= OCRAM2_END) {
+		paddr = common.ocram_ptr;
+		common.ocram_ptr += n*_PAGE_SIZE;
+	}
+
+	return paddr;
+}
+
+static void *alloc_uncached(size_t size, addr_t *paddr, int ocram)
+{
+	uint32_t n = (size + _PAGE_SIZE - 1)/_PAGE_SIZE;
+	oid_t *oid = OID_NULL;
+	addr_t _paddr = 0;
+
+	if (ocram) {
+		oid = OID_PHYSMEM;
+		_paddr = ocram_alloc(n*_PAGE_SIZE);
+		if (!_paddr)
+			return NULL;
+	}
+
+	void *vaddr = mmap(NULL, n*_PAGE_SIZE,
+		PROT_READ | PROT_WRITE, MAP_UNCACHED, oid, _paddr);
+	if (vaddr == MAP_FAILED)
+		return NULL;
+
+	if (!ocram)
+		_paddr = va2pa(vaddr);
+
+	if (paddr != NULL)
+		*paddr = _paddr;
+
+	return vaddr;
+}
+
+static int free_uncached(void *vaddr, size_t size)
+{
+	uint32_t n = (size + _PAGE_SIZE - 1)/_PAGE_SIZE;
+
+	return munmap(vaddr, n*_PAGE_SIZE);
+}
+
+static int edma_configure(void)
 {
 	int res;
 
-	/*
-	 * WARNING!
-	 *
-	 * SDMA channel responsible for reading ADC samples from SAI RX FIFO
-	 * is actually triggered by EPIT2 event (which is used by PLCIO). Only then
-	 * SDMA script checks if SAI RX FIFO event flag is set.
-	 *
-	 * The reason for this is that SDMA is not truly preemptive. For higher
-	 * priority channel to be switched in while other SDMA script is running,
-	 * said script has to execute yield/done instruction. Triggering this
-	 * channel directly by the SAI RX FIFO event results in PLCIO channel
-	 * sometimes being delayed (when SAI RX FIFO event occurrs just before EPIT2
-	 * event).
-	 */
-	uint8_t event_transfer = 39; /* SAI3 RX FIFO */;
-	uint8_t event_channel = 2; /* EPIT2 */
+	void *buf0 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer0_paddr, 1);
+	void *buf1 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer1_paddr, 1);
 
-	unsigned tries = 25;
-	while ((res = sdma_open(&common.sdma, SDMA_DEVICE_FILE_NAME)) < 0) {
-		usleep(100*1000);
-		if (--tries == 0) {
-			log_error("failed to open SDMA device file (%s)", SDMA_DEVICE_FILE_NAME);
-			return -1;
-		}
+	if (buf0 == NULL || buf1 == NULL) {
+		if(buf0 != NULL)
+			free_uncached(buf0, ADC_BUFFER_SIZE);
+		if(buf1 != NULL)
+			free_uncached(buf0, ADC_BUFFER_SIZE);
+
+		log_error("edma buffers allocation failed");
+		return -ENOMEM;
 	}
 
-	void *buffer0, *buffer1;
-	buffer0 = sdma_alloc_uncached(&common.sdma, ADC_BUFFER_SIZE, &common.buffer0_paddr, 1);
-	buffer1 = sdma_alloc_uncached(&common.sdma, ADC_BUFFER_SIZE, &common.buffer1_paddr, 1);
-	if (buffer0 == NULL || buffer1 == NULL) {
-		log_error("failed to allocate buffers");
-		return -1;
-	}
+	memset(buf0, 0, ADC_BUFFER_SIZE);
+	memset(buf1, 0, ADC_BUFFER_SIZE);
 
-	addr_t bd_paddr;
-	common.bd = sdma_alloc_uncached(&common.sdma, 2*sizeof(sdma_buffer_desc_t), &bd_paddr, 1);
-	if (common.bd == NULL) {
-		log_error("failed to allocate memory for buffer descriptors");
-		return -1;
-	}
+	uint8_t xfer_size = sizeof(uint32_t);
 
-	common.bd[0].count = ADC_BUFFER_SIZE;
-	common.bd[0].flags = SDMA_BD_DONE | SDMA_BD_INTR;
-	common.bd[0].command = SDMA_CMD_MODE_32_BIT;
-	common.bd[0].buffer_addr = common.buffer0_paddr;
+	common.tcds[0].soff = 0;
+	common.tcds[0].attr = (edma_get_tcd_attr_xsize(xfer_size) << 8) |
+							edma_get_tcd_attr_xsize(xfer_size);
 
-	common.bd[1].count = ADC_BUFFER_SIZE;
-	common.bd[1].flags = SDMA_BD_DONE | SDMA_BD_WRAP | SDMA_BD_INTR;
-	common.bd[1].command = SDMA_CMD_MODE_32_BIT;
-	common.bd[1].buffer_addr = common.buffer1_paddr;
+	/* Number of bytes per minor loop iteration */
+	common.tcds[0].nbytes_mlnoffno = xfer_size * AD7779_NUM_OF_CHANNELS;
+	common.tcds[0].slast = 0;
+	common.tcds[0].doff = xfer_size;
+	common.tcds[0].dlast_sga = (uint32_t)&common.tcds[1];
 
-	/* SDMA context setup */
-	sdma_context_t sdma_context;
-	sdma_context_init(&sdma_context);
-	sdma_context_set_pc(&sdma_context, sdma_script__shp_2_mcu);
-	if (event_transfer < 32) {
-		sdma_context.gr[1] = 1 << event_transfer;
-	} else {
-		sdma_context.gr[0] = 1 << (event_transfer - 32); /* Event2_mask */
-	}
-	sdma_context.gr[6] = sai_get_rx_fifo_ptr(); /* RX FIFO address */
-	sdma_context.gr[7] = SAI_FIFO_WATERMARK * sizeof(uint32_t); /* Watermark level */
+	/* Number of major loop iterations */
+	common.tcds[0].biter_elinkno =
+		ADC_BUFFER_SIZE / common.tcds[0].nbytes_mlnoffno;
+	common.tcds[0].citer_elinkno = common.tcds[0].biter_elinkno;
 
-	/* Load channel context */
-	sdma_context_set(&common.sdma, &sdma_context);
+	/* Set addrs for the TCD. */
+	common.tcds[0].saddr = sai_get_rx_fifo_ptr();
+	common.tcds[0].daddr = (uint32_t)buf0;
 
-	sdma_channel_config_t cfg;
-	cfg.bd_paddr = bd_paddr;
-	cfg.bd_cnt = 2;
-	cfg.trig = sdma_trig__event;
-	cfg.event = event_channel;
-	cfg.priority = SDMA_CHANNEL_PRIORITY_MIN + 1;
-	sdma_channel_configure(&common.sdma, &cfg);
+	/* Enable major loop finish interrupt and scatter-gather */
+	common.tcds[0].csr = TCD_CSR_INTMAJOR_BIT | TCD_CSR_ESG_BIT;
 
-	sdma_enable(&common.sdma);
+	// condCreate(&common.irq_cond);
+	// beginthread(edma_irq_thread, 2, (void *)malloc(0x4000), 0x4000, event_callback);
+	interrupt(EDMA_CHANNEL_IRQ(SAI1_RX_DMA_CHANNEL),
+		edma_irq_handler, NULL, 0, &common.irq_handle);
+
+	edma_copy_tcd(&common.tcds[0], &common.tcds[1]);
+	common.tcds[1].daddr = (uint32_t)buf1;
+	common.tcds[1].dlast_sga = (uint32_t)&common.tcds[0];
+
+	if ((res = edma_install_tcd(&common.tcds[0], SAI1_RX_DMA_CHANNEL)) != 0)
+		return res;
+
+	dmamux_set_source(SAI1_RX_DMA_CHANNEL, SAI1_RX_DMA_REQUEST);
+	dmamux_channel_enable(SAI1_RX_DMA_CHANNEL);
+	edma_channel_enable(SAI1_RX_DMA_CHANNEL);
 
 	return 0;
 }
@@ -280,7 +412,8 @@ static int dev_init(void)
 	msg.o.size = 0;
 
 	if ((res = msgSend(dir.port, &msg)) < 0 || msg.o.create.err != EOK) {
-		log_error("could not create %s (res=%d, err=%d)", ADC_DEVICE_FILE_NAME, res, msg.o.create.err);
+		log_error("could not create %s (res=%d, err=%d)",
+			ADC_DEVICE_FILE_NAME, res, msg.o.create.err);
 		return -1;
 	}
 
@@ -310,8 +443,7 @@ static int dev_read(void *data, size_t size)
 	if (data != NULL && size != sizeof(unsigned))
 		return -EIO;
 
-	if (sdma_wait_for_intr(&common.sdma, data) < 0)
-		return -EIO;
+	// TODO
 
 	return EOK;
 }
@@ -326,7 +458,21 @@ static int dev_ctl(msg_t *msg)
 	switch (dev_ctl.type) {
 		case adc_dev_ctl__enable:
 			common.enabled = 1;
+			edma_channel_enable(SAI1_RX_DMA_CHANNEL);
 			sai_rx_enable();
+			return EOK;
+
+		case adc_dev_ctl__disable:
+			sai_rx_disable();
+			edma_channel_disable(SAI1_RX_DMA_CHANNEL);
+			common.enabled = 0;
+			return EOK;
+
+		case adc_dev_ctl__set_adc_mux:
+			res = ad7779_set_adc_mux((dev_ctl.mux >> 6),
+				(dev_ctl.mux >> 2) & 0b1111);
+			if (res != AD7779_OK)
+				return -EIO;
 			return EOK;
 
 		case adc_dev_ctl__set_config:
@@ -355,6 +501,55 @@ static int dev_ctl(msg_t *msg)
 			memcpy(msg->o.raw, &dev_ctl, sizeof(adc_dev_ctl_t));
 			return EOK;
 
+		case adc_dev_ctl__set_channel_config:
+		{
+			res = ad7779_set_channel_gain(dev_ctl.ch_config.channel,
+				dev_ctl.ch_config.gain);
+			if (res == AD7779_ARG_ERROR)
+				return -EINVAL;
+			if (res != AD7779_OK)
+				return -EIO;
+
+			ad7779_chmode_t mode = (dev_ctl.ch_config.ref_monitor_mode << 1) |
+				dev_ctl.ch_config.meter_rx_mode;
+
+			res = ad7779_set_channel_mode(dev_ctl.ch_config.channel, mode);
+			if (res == AD7779_ARG_ERROR)
+				return -EINVAL;
+			if (res != AD7779_OK)
+				return -EIO;
+			return EOK;
+		}
+
+		case adc_dev_ctl__get_channel_config:
+		{
+			uint8_t gain;
+			res = ad7779_get_channel_gain(dev_ctl.ch_config.channel, &gain);
+			if (res == AD7779_ARG_ERROR)
+				return -EINVAL;
+			if (res != AD7779_OK)
+				return -EIO;
+
+			dev_ctl.ch_config.gain = gain;
+
+			ad7779_chmode_t mode;
+			res = ad7779_get_channel_mode(dev_ctl.ch_config.channel, &mode);
+			if (res == AD7779_ARG_ERROR)
+				return -EINVAL;
+			if (res != AD7779_OK)
+				return -EIO;
+
+			dev_ctl.ch_config.meter_rx_mode = 0;
+			dev_ctl.ch_config.ref_monitor_mode = 0;
+			if (mode == ad7779_chmode__ref_monitor)
+				dev_ctl.ch_config.ref_monitor_mode = 1;
+			else if (mode == ad7779_chmode__meter_rx)
+				dev_ctl.ch_config.meter_rx_mode = 1;
+
+			memcpy(msg->o.raw, &dev_ctl, sizeof(adc_dev_ctl_t));
+			return EOK;
+		}
+
 		case adc_dev_ctl__set_channel_gain:
 			res = ad7779_set_channel_gain(dev_ctl.gain.channel, dev_ctl.gain.val);
 			if (res == AD7779_ARG_ERROR)
@@ -365,6 +560,33 @@ static int dev_ctl(msg_t *msg)
 
 		case adc_dev_ctl__get_channel_gain:
 			res = ad7779_get_channel_gain(dev_ctl.gain.channel, &dev_ctl.gain.val);
+			if (res == AD7779_ARG_ERROR)
+				return -EINVAL;
+			if (res != AD7779_OK)
+				return -EIO;
+			memcpy(msg->o.raw, &dev_ctl, sizeof(adc_dev_ctl_t));
+			return EOK;
+
+		case adc_dev_ctl__set_channel_calib:
+			res = ad7779_set_channel_offset(dev_ctl.calib.channel, dev_ctl.calib.offset);
+			if (res == AD7779_ARG_ERROR)
+				return -EINVAL;
+			if (res != AD7779_OK)
+				return -EIO;
+			res = ad7779_set_channel_gain_correction(dev_ctl.calib.channel, dev_ctl.calib.gain);
+			if (res == AD7779_ARG_ERROR)
+				return -EINVAL;
+			if (res != AD7779_OK)
+				return -EIO;
+			return EOK;
+
+		case adc_dev_ctl__get_channel_calib:
+			res = ad7779_get_channel_offset(dev_ctl.calib.channel, &dev_ctl.calib.offset);
+			if (res == AD7779_ARG_ERROR)
+				return -EINVAL;
+			if (res != AD7779_OK)
+				return -EIO;
+			res = ad7779_get_channel_gain_correction(dev_ctl.calib.channel, &dev_ctl.calib.gain);
 			if (res == AD7779_ARG_ERROR)
 				return -EINVAL;
 			if (res != AD7779_OK)
@@ -415,29 +637,41 @@ static void msg_loop(void)
 	}
 }
 
+static void ad7779_enableCache(unsigned char enable)
+{
+	platformctl_t pctl;
+
+	pctl.action = pctl_set;
+	pctl.type = pctl_devcache;
+	pctl.devcache.state = !!enable;
+
+	platformctl(&pctl);
+}
+
 static int init(void)
 {
 	int res;
 
 	common.enabled = 0;
-
-	if ((res = ecspi_init()) < 0) {
-		log_error("failed to initialize ecspi");
-		return res;
-	}
+	common.ocram_ptr = OCRAM2_BASE;
 
 	if ((res = sai_init()) < 0) {
 		log_error("failed to initialize sai");
 		return res;
 	}
 
-	if ((res = ad7779_init()) < 0) {
-		log_error("failed to initialize ad7779 (%d)", res);
+	if ((res = edma_init(edma_error_handler)) != 0) {
+		log_error("failed to initialize edma");
 		return res;
 	}
 
-	if ((res = sdma_configure()) < 0) {
-		log_error("failed to configure sdma");
+	if((res = edma_configure()) != 0) {
+		log_error("failed to configure edma");
+		return res;
+	}
+
+	if ((res = ad7779_init()) < 0) {
+		log_error("failed to initialize ad7779 (%d)", res);
 		return res;
 	}
 
@@ -452,6 +686,9 @@ static int init(void)
 int main(void)
 {
 	oid_t root;
+
+	/* Temporary fix for OCRAM allocation */
+	ad7779_enableCache(0);
 
 	/* Wait for the filesystem */
 	while (lookup("/", NULL, &root) < 0)

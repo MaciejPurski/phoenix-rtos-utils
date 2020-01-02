@@ -17,8 +17,8 @@ TARGET=armv7-imxrt-1064
 TARGET_FAMILY=`echo $TARGET | awk -F- '{ print $1 }'`
 TARGET_SUBFAMILY=$TARGET_FAMILY-`echo $TARGET | awk -F- '{ print $2 }'`
 
-export KERNEL_CFLAGS=" -DUART_CONSOLE=3"
-export DEVICES_CFLAGS=" -DUART3=1 -DUART_CONSOLE=3 -DSPI3=1"
+export KERNEL_CFLAGS="-DUART_CONSOLE=3"
+export DEVICES_CFLAGS="-DUART3=1 -DUART_CONSOLE=3 -DSPI3=1 -DSPI4=1"
 
 #
 # Project specific build
@@ -38,7 +38,7 @@ b_image() {
 	done
 
 	./phoenix-rtos-kernel/scripts/mkimg-imxrt.sh "_build/phoenix-${TARGET}.elf" "${KERNEL_ARGS}" "_build/phoenix-${TARGET}.img" \
-		"${PROG_PATHS} _build/${TARGET}/prog/ad7779"
+		"${PROG_PATHS} _build/${TARGET}/prog/ad7779-driver _build/${TARGET}/prog/ad7779-test"
 }
 
 b_update_pkg() { :; }
