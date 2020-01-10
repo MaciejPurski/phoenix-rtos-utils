@@ -27,6 +27,7 @@ b_build() {
 }
 
 b_image() {
+	b_log "Creating BeSmart image"
 	./phoenix-rtos-kernel/scripts/mkimg-imxrt.sh "_build/phoenix-${TARGET}.elf" "Ximxrt-multi Xdummyfs Xpsh" "_build/phoenix-${TARGET}.img" \
 		_build/${TARGET}/prog/imxrt-multi _build/${TARGET}/prog/dummyfs _build/${TARGET}/prog/psh _build/${TARGET}/prog/ad7779
 }
