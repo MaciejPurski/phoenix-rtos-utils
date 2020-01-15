@@ -30,8 +30,15 @@ b_build() {
 
 b_image() {
 	b_log "Creating BeSmart image"
-	./phoenix-rtos-kernel/scripts/mkimg-imxrt.sh "_build/phoenix-${TARGET}.elf" "Ximxrt-multi Xdummyfs Xpsh" "_build/phoenix-${TARGET}.img" \
-		_build/${TARGET}/prog/imxrt-multi _build/${TARGET}/prog/dummyfs _build/${TARGET}/prog/psh _build/${TARGET}/prog/ad7779
+	PROGS=("imxrt-multi" "imxrt-flash" "dummyfs" "psd" "psh")
+
+	for prog in "${PROGS[@]}"; do
+		KERNEL_ARGS+=" X${prog}"
+		PROG_PATHS+=" _build/${TARGET}/prog/${prog}"
+	done
+
+	./phoenix-rtos-kernel/scripts/mkimg-imxrt.sh "_build/phoenix-${TARGET}.elf" "${KERNEL_ARGS}" "_build/phoenix-${TARGET}.img" \
+		"${PROG_PATHS} _build/${TARGET}/prog/ad7779"
 }
 
 b_update_pkg() { :; }
