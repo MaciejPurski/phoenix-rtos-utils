@@ -17,8 +17,8 @@ TARGET=armv7-imxrt-1064
 TARGET_FAMILY=`echo $TARGET | awk -F- '{ print $1 }'`
 TARGET_SUBFAMILY=$TARGET_FAMILY-`echo $TARGET | awk -F- '{ print $2 }'`
 
-export KERNEL_CFLAGS="-DUART_CONSOLE=3"
-export DEVICES_CFLAGS="-DUART3=1 -DUART_CONSOLE=3 -DSPI3=1"
+export KERNEL_CFLAGS=" -DUART_CONSOLE=3"
+export DEVICES_CFLAGS=" -DUART3=1 -DUART_CONSOLE=3 -DSPI3=1"
 
 #
 # Project specific build
