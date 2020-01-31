@@ -1,0 +1,25 @@
+ifeq ($(OUTPUT_DIR),)
+$(error Please define OUTPUT_DIR)
+endif
+
+include $(OUTPUT_DIR)/mk/pre.mk
+
+ifeq ($(MSP_MON_HAL_TYPE),msp430)
+    ifeq ($(MSP_MON_CHIP_TYPE),)
+        $(error Please define MSP_MON_CHIP_TYPE)
+    endif
+
+    LD_SCRIPTS_DIR := $(shell pwd)/hal/$(MSP_MON_HAL_TYPE)/chips/$(MSP_MON_CHIP_TYPE)/ld/
+
+    LDFLAGS += -L"$(LD_SCRIPTS_DIR)"
+    LDFLAGS += -T"$(LD_SCRIPTS_DIR)/$(MSP_MON_CHIP_TYPE).ld"
+    LDFLAGS += -T"$(LD_SCRIPTS_DIR)/$(MSP_MON_CHIP_TYPE)_symbols.ld"
+endif
+
+LDLIBS += -lm
+
+LIBS := msp_mon_app_hal log event devices imxwdg board libmmp state
+
+$(eval $(call ADD_PROG,msp-mon-app,main.c,$$(LIBS)))
+
+include $(OUTPUT_DIR)/mk/post.mk

@@ -1,0 +1,22 @@
+ifeq ($(OUTPUT_DIR),)
+$(error Please define OUTPUT_DIR)
+endif
+
+include $(OUTPUT_DIR)/mk/pre.mk
+
+ifeq ($(MSP_MON_HAL_TYPE),)
+$(error Please define MSP_MON_HAL_TYPE)
+endif
+
+ifeq ($(MSP_MON_CHIP_TYPE),)
+$(error Please define MSP_MON_CHIP_TYPE)
+endif
+
+$(eval $(call ADD_HDRS_ALL,hal,,generic/include))
+$(eval $(call ADD_HDRS_ALL,hal_bits,,$(MSP_MON_HAL_TYPE)/include))
+$(eval $(call ADD_HDRS_ALL,hal_chip,,$(MSP_MON_HAL_TYPE)/chips/$(MSP_MON_CHIP_TYPE)/include))
+$(eval $(call ADD_HDRS,devices_csv,,$(MSP_MON_HAL_TYPE)/include,devices.csv))
+
+$(eval $(call ADD_LIB,msp_mon_app_hal,$(MSP_MON_HAL_TYPE)/src))
+
+include $(OUTPUT_DIR)/mk/post.mk

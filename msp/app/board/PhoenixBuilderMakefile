@@ -1,0 +1,9 @@
+ifeq ($(OUTPUT_DIR),)
+$(error Please define OUTPUT_DIR)
+endif
+
+include $(OUTPUT_DIR)/mk/pre.mk
+
+$(eval $(call ADD_LIB,board,.))
+
+include $(OUTPUT_DIR)/mk/post.mk

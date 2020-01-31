@@ -1,0 +1,12 @@
+ifeq ($(OUTPUT_DIR),)
+$(error Please define OUTPUT_DIR)
+endif
+
+include $(OUTPUT_DIR)/mk/pre.mk
+
+$(eval $(call ADD_HDRS,fm25l04b,,fm25l04b,fm25l04b.h))
+$(eval $(call ADD_HDRS,lis2dh12,,lis2dh12,lis2dh12.h))
+$(eval $(call ADD_HDRS,lis3mdl,,lis3mdl,lis3mdl.h))
+$(eval $(call ADD_HDRS,tampers,,tampers,tampers.h))
+
+include $(OUTPUT_DIR)/mk/post.mk

@@ -1,0 +1,13 @@
+ifeq ($(OUTPUT_DIR),)
+$(error Please define OUTPUT_DIR)
+endif
+include $(OUTPUT_DIR)/mk/pre.mk
+
+
+CPPFLAGS := -I./include/ $(CPPFLAGS)
+
+$(eval $(call ADD_LIB,libmmp,src))
+
+$(eval $(call ADD_HDRS_ALL,default,,include))
+
+include $(OUTPUT_DIR)/mk/post.mk
