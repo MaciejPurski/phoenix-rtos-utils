@@ -22,3 +22,21 @@
 [submodule "phoenix-rtos-usb"]
 	path = phoenix-rtos-usb
 	url = https://github.com/phoenix-rtos/phoenix-rtos-usb.git
+[submodule "PRIME"]
+	path = PRIME
+	url = ssh://git.phoesys.com:29418/PRIME
+[submodule "core-libs"]
+	path = core-libs
+	url = ssh://git.phoesys.com:29418/core-libs
+[submodule "libmeter"]
+	path = libmeter
+	url = ssh://git.phoesys.com:29418/libmeter
+[submodule "metersrv"]
+	path = metersrv
+	url = ssh://git.phoesys.com:29418/metersrv
+[submodule "phoenix-builder"]
+	path = phoenix-builder
+	url = ssh://git.phoesys.com:29418/phoenix-builder
+[submodule "libcosem"]
+	path = libcosem
+	url = ssh://git.phoesys.com:29418/libcosem
