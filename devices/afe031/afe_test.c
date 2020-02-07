@@ -3,9 +3,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <errno.h>
+#include <imxrt-multi.h>
 
 #include "afe03x.h"
-#include "../../phoenix-rtos-devices/multi/imxrt-multi/imxrt-multi.h"
 
 
 #define LOG(str, ...) do { if (1) fprintf(stderr, "afe: " str "\n", ##__VA_ARGS__); } while (0)

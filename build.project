@@ -18,7 +18,7 @@ TARGET_FAMILY=`echo $TARGET | awk -F- '{ print $1 }'`
 TARGET_SUBFAMILY=$TARGET_FAMILY-`echo $TARGET | awk -F- '{ print $2 }'`
 
 export KERNEL_CFLAGS="-DUART_CONSOLE=3"
-export DEVICES_CFLAGS="-DUART3=1 -DUART_CONSOLE=3 -DSPI3=1 -DSPI4=1"
+export DEVICES_CFLAGS="-DUART1=0 -DUART3=1 -DUART_CONSOLE=3 -DSPI3=1 -DSPI4=1"
 
 #
 # Project specific build
@@ -26,19 +26,34 @@ export DEVICES_CFLAGS="-DUART3=1 -DUART_CONSOLE=3 -DSPI3=1 -DSPI4=1"
 b_build() {
 	b_log "Building project device drivers"
 	(cd devices && make $MAKEFLAGS $CLEAN all)
+
+	# NOTE: Programs are automatically installed into rootfs
+	b_log "Building dcu-besmart.sh"
+	(./phoenix-builder/proj/dcu-besmart.sh -j 9)
+
+	b_log "Building libmeter"
+	make -C libmeter all install -j 9
+	b_log "Building metersrv"
+	make -C metersrv/metersrv all install -j 9
 }
 
 b_image() {
 	b_log "Creating BeSmart image"
-	PROGS=("imxrt-multi" "imxrt-flash" "dummyfs" "psd" "psh")
+	PROGS=("imxrt-multi" "dummyfs" "psh" "ad7779-driver")
+	DCU_PROGS=("metersrv")
 
 	for prog in "${PROGS[@]}"; do
 		KERNEL_ARGS+=" X${prog}"
 		PROG_PATHS+=" _build/${TARGET}/prog/${prog}"
 	done
 
+	for prog in "${DCU_PROGS[@]}"; do
+		KERNEL_ARGS+=" X${prog};-u"
+		PROG_PATHS+=" _build/${TARGET}/dcu-imxrt/prog/${prog}"
+	done
+
 	./phoenix-rtos-kernel/scripts/mkimg-imxrt.sh "_build/phoenix-${TARGET}.elf" "${KERNEL_ARGS}" "_build/phoenix-${TARGET}.img" \
-		"${PROG_PATHS} _build/${TARGET}/prog/ad7779-driver _build/${TARGET}/prog/ad7779-test"
+		"${PROG_PATHS}"
 }
 
 b_update_pkg() { :; }

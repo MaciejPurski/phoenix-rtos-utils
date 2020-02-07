@@ -11,9 +11,6 @@
  * %LICENSE%
  */
 
-#include "ad7779.h"
-#include "../../phoenix-rtos-devices/multi/imxrt-multi/imxrt-multi.h"
-
 #include <sys/mman.h>
 #include <sys/msg.h>
 #include <sys/platform.h>
@@ -24,6 +21,9 @@
 #include <fcntl.h>
 
 #include <phoenix/arch/imxrt.h>
+#include <imxrt-multi.h>
+
+#include "ad7779.h"
 
 #define COL_RED	 "\033[1;31m"
 #define COL_CYAN	"\033[1;36m"
