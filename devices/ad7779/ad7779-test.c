@@ -35,6 +35,8 @@
 
 #define GAIN            4
 
+#define NUM_CHANNELS    8
+
 
 static int adc_send_msg(oid_t adc_dev, adc_dev_ctl_t* ctl)
 {
@@ -167,7 +169,7 @@ int main(int argc, char *argv[])
 		return -1;
 
 	int i, j;
-	for (i = 0; i < 8; ++i) {
+	for (i = 0; i < NUM_CHANNELS; ++i) {
 		if (adc_set_ch_gain(adc_dev, i, 1, 0b01) != EOK)
 			return -1;
 		if (adc_set_ch_calib(adc_dev, i, 0.5 * GAIN_BASE, 0) != EOK)
@@ -182,14 +184,14 @@ int main(int argc, char *argv[])
 	if (adc_enable(adc_dev, 0) != EOK)
 		return -1;
 
-	double meas1[8], meas2[8];
+	double meas1[NUM_CHANNELS], meas2[NUM_CHANNELS];
 	uint32_t gain_err, offset_err;
 
-	for (i = 0; i < 8; ++i) {
+	for (i = 0; i < NUM_CHANNELS; ++i) {
 		meas1[i] = 0;
 
 		for(j = 0; j < 100; ++j)
-			meas1[i] += adc_raw2meas(adc_convert(buf0[8*j+i]), 0.5);
+			meas1[i] += adc_raw2meas(adc_convert(buf0[NUM_CHANNELS*j+i]), 0.5);
 
 		meas1[i] = meas1[i] / 100;
 	}
@@ -207,11 +209,11 @@ int main(int argc, char *argv[])
 
 	printf("Calibrating offset and gain correction\n");
 
-	for (i = 0; i < 8; ++i) {
+	for (i = 0; i < NUM_CHANNELS; ++i) {
 		meas2[i] = 0;
 
 		for(j = 0; j < 100; ++j)
-			meas2[i] += adc_raw2meas(adc_convert(buf0[8*j+i]), 0.5);
+			meas2[i] += adc_raw2meas(adc_convert(buf0[NUM_CHANNELS*j+i]), 0.5);
 
 		meas2[i] = meas2[i] / 100;
 
@@ -243,8 +245,8 @@ int main(int argc, char *argv[])
 
 	printf("# X Y Z\n");
 	for (i = 0; i < 3; ++i) {
-		for (j = 0; j < num_samples / 8; ++j) {
-			data = buf0[8 * j + i];
+		for (j = 0; j < num_samples / NUM_CHANNELS; ++j) {
+			data = buf0[NUM_CHANNELS * j + i];
 			printf("%d, %d, %f, %d\n",
 				j,
 				adc_convert(data),
@@ -253,7 +255,7 @@ int main(int argc, char *argv[])
 		}
 
 		for (j = 0; j < num_samples / 8; ++j) {
-			data = buf1[8 * j + i];
+			data = buf1[NUM_CHANNELS * j + i];
 			printf("%d, %d, %f, %d\n",
 				num_samples / 8 + j,
 				adc_convert(data),
@@ -263,8 +265,8 @@ int main(int argc, char *argv[])
 	}
 
 	for (i = 4; i < 7; ++i) {
-		for (j = 0; j < num_samples / 8; ++j) {
-			data = buf0[8 * j + i];
+		for (j = 0; j < num_samples / NUM_CHANNELS; ++j) {
+			data = buf0[NUM_CHANNELS * j + i];
 			printf("%d, %d, %f, %d\n",
 				j,
 				adc_convert(data),
@@ -272,8 +274,8 @@ int main(int argc, char *argv[])
 				(data >> 28) & 0x7);
 		}
 
-		for (j = 0; j < num_samples / 8; ++j) {
-			data = buf1[8 * j + i];
+		for (j = 0; j < num_samples / NUM_CHANNELS; ++j) {
+			data = buf1[NUM_CHANNELS * j + i];
 			printf("%d, %d, %f, %d\n",
 				num_samples / 8 + j,
 				adc_convert(data),

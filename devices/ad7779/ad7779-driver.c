@@ -43,8 +43,7 @@
 #define SAI1_RX_DMA_REQUEST         (19)
 #define SAI1_RX_DMA_CHANNEL         (7)
 
-/* Full buffer should store 0.1 s of data for each channel */
-#define ADC_BUFFER_SIZE             (4 * AD7779_NUM_OF_CHANNELS * AD7779_MAX_SAMPLE_RATE_HR / 10)
+#define ADC_BUFFER_SIZE             (_PAGE_SIZE)
 
 typedef volatile struct {
 	uint32_t VERID; //0x00
@@ -253,15 +252,6 @@ static int edma_irq_handler(unsigned int n, void *arg)
 	return 0;
 }
 
-// static void edma_irq_thread(void *callback)
-// {
-// 	return;
-// }
-
-// void event_callback(int data)
-// {
-// 	(void)data;
-// };
 
 #define OCRAM2_BASE              (0x20200000)
 #define OCRAM2_END               (0x2027FFFF)
