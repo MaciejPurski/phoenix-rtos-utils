@@ -28,8 +28,8 @@ b_build() {
 	(cd devices && make $MAKEFLAGS $CLEAN all)
 
 	# NOTE: Programs are automatically installed into rootfs
-	b_log "Building dcu-besmart.sh"
-	(./phoenix-builder/proj/dcu-besmart.sh -j 9)
+	b_log "Building meter-besmart.sh"
+	(./phoenix-builder/proj/meter-besmart.sh -j 9)
 
 	b_log "Building libmeter"
 	make -C libmeter all install -j 9
@@ -49,7 +49,7 @@ b_image() {
 
 	for prog in "${DCU_PROGS[@]}"; do
 		KERNEL_ARGS+=" X${prog};-u"
-		PROG_PATHS+=" _build/${TARGET}/dcu-imxrt/prog/${prog}"
+		PROG_PATHS+=" _build/${TARGET}/meter-imxrt/prog/${prog}"
 	done
 
 	./phoenix-rtos-kernel/scripts/mkimg-imxrt.sh "_build/phoenix-${TARGET}.elf" "${KERNEL_ARGS}" "_build/phoenix-${TARGET}.img" \

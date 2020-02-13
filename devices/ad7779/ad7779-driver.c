@@ -43,7 +43,7 @@
 #define SAI1_RX_DMA_REQUEST         (19)
 #define SAI1_RX_DMA_CHANNEL         (7)
 
-#define ADC_BUFFER_SIZE             (_PAGE_SIZE)
+#define ADC_BUFFER_SIZE             (4 * AD7779_NUM_OF_CHANNELS * _PAGE_SIZE)
 
 typedef volatile struct {
 	uint32_t VERID; //0x00
@@ -92,6 +92,8 @@ struct driver_common_s
 	volatile struct edma_tcd_s
 		__attribute__((aligned(32))) tcds[2];
 
+	volatile uint8_t current;
+
 	addr_t buffer0_paddr;
 	addr_t buffer1_paddr;
 
@@ -100,7 +102,7 @@ struct driver_common_s
 
 	addr_t ocram_ptr;
 
-	handle_t irq_cond, irq_handle;
+	handle_t irq_cond, irq_lock, irq_handle;
 
 	int enabled;
 } common;
@@ -248,6 +250,8 @@ static int edma_error_handler(unsigned int n, void *arg)
 
 static int edma_irq_handler(unsigned int n, void *arg)
 {
+	common.current = (common.current + 1) % 2;
+
 	edma_clear_interrupt(SAI1_RX_DMA_CHANNEL);
 	return 0;
 }
@@ -308,6 +312,17 @@ static int edma_configure(void)
 {
 	int res;
 
+	if((res = mutexCreate(&common.irq_lock) != EOK)) {
+		log_error("mutex resource creation failed");
+		return res;
+	}
+
+	if((res = condCreate(&common.irq_cond)) != EOK) {
+		log_error("conditional resource creation failed");
+		resourceDestroy(common.irq_lock);
+		return res;
+	}
+
 	void *buf0 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer0_paddr, 1);
 	void *buf1 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer1_paddr, 1);
 
@@ -348,17 +363,15 @@ static int edma_configure(void)
 	/* Enable major loop finish interrupt and scatter-gather */
 	common.tcds[0].csr = TCD_CSR_INTMAJOR_BIT | TCD_CSR_ESG_BIT;
 
-	// condCreate(&common.irq_cond);
-	// beginthread(edma_irq_thread, 2, (void *)malloc(0x4000), 0x4000, event_callback);
-	interrupt(EDMA_CHANNEL_IRQ(SAI1_RX_DMA_CHANNEL),
-		edma_irq_handler, NULL, 0, &common.irq_handle);
-
 	edma_copy_tcd(&common.tcds[0], &common.tcds[1]);
 	common.tcds[1].daddr = (uint32_t)buf1;
 	common.tcds[1].dlast_sga = (uint32_t)&common.tcds[0];
 
 	if ((res = edma_install_tcd(&common.tcds[0], SAI1_RX_DMA_CHANNEL)) != 0)
 		return res;
+
+	interrupt(EDMA_CHANNEL_IRQ(SAI1_RX_DMA_CHANNEL),
+		edma_irq_handler, NULL, common.irq_cond, &common.irq_handle);
 
 	dmamux_set_source(SAI1_RX_DMA_CHANNEL, SAI1_RX_DMA_REQUEST);
 	dmamux_channel_enable(SAI1_RX_DMA_CHANNEL);
@@ -433,7 +446,13 @@ static int dev_read(void *data, size_t size)
 	if (data != NULL && size != sizeof(unsigned))
 		return -EIO;
 
-	// TODO
+	mutexLock(common.irq_lock);
+
+	condWait(common.irq_cond, common.irq_lock, 0);
+
+	*(uint32_t *)data = common.current;
+
+	mutexUnlock(common.irq_lock);
 
 	return EOK;
 }
@@ -643,6 +662,7 @@ static int init(void)
 	int res;
 
 	common.enabled = 0;
+	common.current = 0;
 	common.ocram_ptr = OCRAM2_BASE;
 
 	if ((res = sai_init()) < 0) {
