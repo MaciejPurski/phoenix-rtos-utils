@@ -43,7 +43,7 @@
 #define SAI1_RX_DMA_REQUEST         (19)
 #define SAI1_RX_DMA_CHANNEL         (7)
 
-#define ADC_BUFFER_SIZE             (4 * AD7779_NUM_OF_CHANNELS * _PAGE_SIZE)
+#define ADC_BUFFER_SIZE             (AD7779_NUM_OF_CHANNELS * _PAGE_SIZE)
 
 typedef volatile struct {
 	uint32_t VERID; //0x00
@@ -92,7 +92,7 @@ struct driver_common_s
 	volatile struct edma_tcd_s
 		__attribute__((aligned(32))) tcds[2];
 
-	volatile uint8_t current;
+	volatile uint32_t current;
 
 	addr_t buffer0_paddr;
 	addr_t buffer1_paddr;
@@ -250,7 +250,7 @@ static int edma_error_handler(unsigned int n, void *arg)
 
 static int edma_irq_handler(unsigned int n, void *arg)
 {
-	common.current = (common.current + 1) % 2;
+	common.current += 1;
 
 	edma_clear_interrupt(SAI1_RX_DMA_CHANNEL);
 	return 0;
