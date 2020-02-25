@@ -88,11 +88,10 @@ typedef volatile struct {
 struct driver_common_s
 {
 	uint32_t port;
+	volatile uint32_t current;
 
 	volatile struct edma_tcd_s
 		__attribute__((aligned(32))) tcds[2];
-
-	volatile uint32_t current;
 
 	addr_t buffer0_paddr;
 	addr_t buffer1_paddr;
@@ -450,7 +449,7 @@ static int dev_read(void *data, size_t size)
 
 	condWait(common.irq_cond, common.irq_lock, 0);
 
-	*(uint32_t *)data = common.current;
+	*(uint32_t **)data = &common.current;
 
 	mutexUnlock(common.irq_lock);
 
