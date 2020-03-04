@@ -43,7 +43,7 @@
 #define SAI1_RX_DMA_REQUEST         (19)
 #define SAI1_RX_DMA_CHANNEL         (7)
 
-#define ADC_BUFFER_SIZE             (AD7779_NUM_OF_CHANNELS * _PAGE_SIZE)
+#define ADC_BUFFER_SIZE             (4 * AD7779_NUM_OF_CHANNELS * _PAGE_SIZE)
 
 typedef volatile struct {
 	uint32_t VERID; //0x00
@@ -323,8 +323,8 @@ static int edma_configure(void)
 		return res;
 	}
 
-	void *buf0 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer0_paddr, 1);
-	void *buf1 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer1_paddr, 1);
+	void *buf0 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer0_paddr, 0);
+	void *buf1 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer1_paddr, 0);
 
 	if (buf0 == NULL || buf1 == NULL) {
 		if(buf0 != NULL)
@@ -698,7 +698,7 @@ int main(void)
 	oid_t root;
 
 	/* Temporary fix for OCRAM allocation */
-	ad7779_enableCache(0);
+	// ad7779_enableCache(0);
 
 	/* Wait for the filesystem */
 	while (lookup("/", NULL, &root) < 0)
