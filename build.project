@@ -41,14 +41,14 @@ b_build() {
 b_image() {
 	b_log "Creating BeSmart image"
 	PROGS=("imxrt-multi" "dummyfs" "psh" "ad7779-driver")
-	DCU_PROGS=("metersrv")
+	METER_PROGS=("metersrv")
 
 	for prog in "${PROGS[@]}"; do
 		KERNEL_ARGS+=" X${prog}"
 		PROG_PATHS+=" _build/${TARGET}/prog/${prog}"
 	done
 
-	for prog in "${DCU_PROGS[@]}"; do
+	for prog in "${METER_PROGS[@]}"; do
 		KERNEL_ARGS+=" X${prog};-u"
 		PROG_PATHS+=" _build/${TARGET}/meter-imxrt/prog/${prog}"
 	done
