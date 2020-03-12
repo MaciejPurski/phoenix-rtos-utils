@@ -55,7 +55,7 @@ static int adc_send_msg(oid_t adc_dev, adc_dev_ctl_t* ctl)
 	return EOK;
 };
 
-static int adc_get_buffers(oid_t adc_dev, uint32_t** buf0, uint32_t** buf1, size_t *size)
+static int adc_get_buffers(oid_t adc_dev, uint32_t** buf0, size_t *buf_num, size_t *size)
 {
 	adc_dev_ctl_t adc_ctl;
 	adc_ctl.type = adc_dev_ctl__get_buffers;
@@ -63,8 +63,8 @@ static int adc_get_buffers(oid_t adc_dev, uint32_t** buf0, uint32_t** buf1, size
 	if (adc_send_msg(adc_dev, &adc_ctl) != EOK)
 		return -1;
 
-	*buf0 = (uint32_t *)adc_ctl.buffers.paddr0;
-	*buf1 = (uint32_t *)adc_ctl.buffers.paddr1;
+	*buf0 = (uint32_t *)adc_ctl.buffers.paddr;
+	*buf_num= (size_t)adc_ctl.buffers.num;
 	*size = (size_t)adc_ctl.buffers.size;
 
 	return 0;
@@ -116,17 +116,21 @@ static int adc_set_adc_mux(oid_t adc_dev, uint8_t mux)
 
 static inline uint32_t adc_convert(uint32_t value)
 {
-	return (value - MIDSCALE) & FULLSCALE;
+	value &= FULLSCALE;
+	if (value > 1 << 23)
+		value -= 2*(1 << 23);
+
+	return value;
 };
 
 static inline double adc_raw2meas(uint32_t value, double gain)
 {
-	return (((double)value)/MIDSCALE - 1) * VREF / gain;
+	return (((double)value)/MIDSCALE) * VREF / gain;
 }
 
 static inline uint32_t adc_meas2raw(double value, double gain)
 {
-	return (value * gain / VREF + 1) * MIDSCALE;
+	return (value * gain / VREF) * MIDSCALE;
 }
 
 static void adc_calib_gain_offset(double ref1, double meas1,
@@ -155,14 +159,14 @@ int main(int argc, char *argv[])
 	if (lookup(ADC_DRIVER, NULL, &adc_dev) < 0)
 		return -ENODEV;
 
-	uint32_t *buf0 = NULL;
-	uint32_t *buf1 = NULL;
-	size_t num_samples = 0;
+	uint32_t *buf = NULL;
+	size_t num_bufs = 0;
+	size_t buf_size = 0;
 
-	if (adc_get_buffers(adc_dev, &buf0, &buf1, &num_samples) != EOK)
+	if (adc_get_buffers(adc_dev, &buf, &num_bufs, &buf_size) != EOK)
 		return -1;
 
-	num_samples = num_samples / sizeof(uint32_t);
+	buf_size = buf_size / sizeof(uint32_t);
 
 	printf("Measuring reference values\n");
 	if (adc_set_adc_mux(adc_dev, (0b00 << 6) | (0b0110 << 2)) != EOK)
@@ -191,7 +195,7 @@ int main(int argc, char *argv[])
 		meas1[i] = 0;
 
 		for(j = 0; j < 100; ++j)
-			meas1[i] += adc_raw2meas(adc_convert(buf0[NUM_CHANNELS*j+i]), 0.5);
+			meas1[i] += adc_raw2meas(adc_convert(buf[NUM_CHANNELS*j+i]), 0.5);
 
 		meas1[i] = meas1[i] / 100;
 	}
@@ -213,7 +217,7 @@ int main(int argc, char *argv[])
 		meas2[i] = 0;
 
 		for(j = 0; j < 100; ++j)
-			meas2[i] += adc_raw2meas(adc_convert(buf0[NUM_CHANNELS*j+i]), 0.5);
+			meas2[i] += adc_raw2meas(adc_convert(buf[NUM_CHANNELS*j+i]), 0.5);
 
 		meas2[i] = meas2[i] / 100;
 
@@ -245,19 +249,10 @@ int main(int argc, char *argv[])
 
 	printf("# X Y Z\n");
 	for (i = 0; i < 3; ++i) {
-		for (j = 0; j < num_samples / NUM_CHANNELS; ++j) {
-			data = buf0[NUM_CHANNELS * j + i];
+		for (j = 0; j < buf_size / NUM_CHANNELS; ++j) {
+			data = buf[NUM_CHANNELS * j + i];
 			printf("%d, %d, %f, %d\n",
 				j,
-				adc_convert(data),
-				adc_raw2meas(adc_convert(data), VSCALE * GAIN),
-				(data >> 28) & 0x7);
-		}
-
-		for (j = 0; j < num_samples / 8; ++j) {
-			data = buf1[NUM_CHANNELS * j + i];
-			printf("%d, %d, %f, %d\n",
-				num_samples / 8 + j,
 				adc_convert(data),
 				adc_raw2meas(adc_convert(data), VSCALE * GAIN),
 				(data >> 28) & 0x7);
@@ -265,19 +260,10 @@ int main(int argc, char *argv[])
 	}
 
 	for (i = 4; i < 7; ++i) {
-		for (j = 0; j < num_samples / NUM_CHANNELS; ++j) {
-			data = buf0[NUM_CHANNELS * j + i];
+		for (j = 0; j < buf_size / NUM_CHANNELS; ++j) {
+			data = buf[NUM_CHANNELS * j + i];
 			printf("%d, %d, %f, %d\n",
 				j,
-				adc_convert(data),
-				adc_raw2meas(adc_convert(data), CSCALE * GAIN),
-				(data >> 28) & 0x7);
-		}
-
-		for (j = 0; j < num_samples / NUM_CHANNELS; ++j) {
-			data = buf1[NUM_CHANNELS * j + i];
-			printf("%d, %d, %f, %d\n",
-				num_samples / 8 + j,
 				adc_convert(data),
 				adc_raw2meas(adc_convert(data), CSCALE * GAIN),
 				(data >> 28) & 0x7);

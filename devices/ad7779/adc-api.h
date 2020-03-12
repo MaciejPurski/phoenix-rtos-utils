@@ -44,8 +44,8 @@ typedef struct {
 	union {
 		/* buffers */
 		struct {
-			addr_t paddr0;
-			addr_t paddr1;
+			addr_t paddr;
+			size_t num;
 			size_t size;
 		} buffers;
 

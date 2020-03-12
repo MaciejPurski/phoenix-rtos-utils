@@ -44,6 +44,7 @@
 #define SAI1_RX_DMA_CHANNEL         (7)
 
 #define ADC_BUFFER_SIZE             (4 * AD7779_NUM_OF_CHANNELS * _PAGE_SIZE)
+#define NUM_OF_BUFFERS              (16)
 
 typedef volatile struct {
 	uint32_t VERID; //0x00
@@ -91,10 +92,9 @@ struct driver_common_s
 	volatile uint32_t current;
 
 	volatile struct edma_tcd_s
-		__attribute__((aligned(32))) tcds[2];
+		__attribute__((aligned(32))) tcds[NUM_OF_BUFFERS];
 
-	addr_t buffer0_paddr;
-	addr_t buffer1_paddr;
+	addr_t buffer_paddr;
 
 	sai_t *sai;
 	addr_t sai_paddr;
@@ -322,21 +322,14 @@ static int edma_configure(void)
 		return res;
 	}
 
-	void *buf0 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer0_paddr, 0);
-	void *buf1 = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer1_paddr, 0);
+	void *buf = alloc_uncached(ADC_BUFFER_SIZE, &common.buffer_paddr, 0);
 
-	if (buf0 == NULL || buf1 == NULL) {
-		if(buf0 != NULL)
-			free_uncached(buf0, ADC_BUFFER_SIZE);
-		if(buf1 != NULL)
-			free_uncached(buf0, ADC_BUFFER_SIZE);
-
+	if (buf == NULL) {
 		log_error("edma buffers allocation failed");
 		return -ENOMEM;
 	}
 
-	memset(buf0, 0, ADC_BUFFER_SIZE);
-	memset(buf1, 0, ADC_BUFFER_SIZE);
+	memset(buf, 0, ADC_BUFFER_SIZE);
 
 	uint8_t xfer_size = sizeof(uint32_t);
 
@@ -352,19 +345,23 @@ static int edma_configure(void)
 
 	/* Number of major loop iterations */
 	common.tcds[0].biter_elinkno =
-		ADC_BUFFER_SIZE / common.tcds[0].nbytes_mlnoffno;
+		ADC_BUFFER_SIZE / common.tcds[0].nbytes_mlnoffno / NUM_OF_BUFFERS;
 	common.tcds[0].citer_elinkno = common.tcds[0].biter_elinkno;
 
 	/* Set addrs for the TCD. */
 	common.tcds[0].saddr = sai_get_rx_fifo_ptr();
-	common.tcds[0].daddr = (uint32_t)buf0;
+	common.tcds[0].daddr = (uint32_t)buf;
 
 	/* Enable major loop finish interrupt and scatter-gather */
 	common.tcds[0].csr = TCD_CSR_INTMAJOR_BIT | TCD_CSR_ESG_BIT;
 
-	edma_copy_tcd(&common.tcds[0], &common.tcds[1]);
-	common.tcds[1].daddr = (uint32_t)buf1;
-	common.tcds[1].dlast_sga = (uint32_t)&common.tcds[0];
+	int i;
+
+	for (i = 1; i < NUM_OF_BUFFERS; ++i) {
+		edma_copy_tcd(&common.tcds[0], &common.tcds[i]);
+		common.tcds[i].daddr = (uint32_t)buf + i * ADC_BUFFER_SIZE / NUM_OF_BUFFERS;
+		common.tcds[i].dlast_sga = (uint32_t)&common.tcds[(i + 1) % NUM_OF_BUFFERS];
+	}
 
 	if ((res = edma_install_tcd(&common.tcds[0], SAI1_RX_DMA_CHANNEL)) != 0)
 		return res;
@@ -466,6 +463,7 @@ static int dev_ctl(msg_t *msg)
 	switch (dev_ctl.type) {
 		case adc_dev_ctl__enable:
 			common.enabled = 1;
+			common.current = 0;
 			edma_channel_enable(SAI1_RX_DMA_CHANNEL);
 			sai_rx_enable();
 			return EOK;
@@ -474,6 +472,7 @@ static int dev_ctl(msg_t *msg)
 			sai_rx_disable();
 			edma_channel_disable(SAI1_RX_DMA_CHANNEL);
 			common.enabled = 0;
+			common.current = 0;
 			return EOK;
 
 		case adc_dev_ctl__set_adc_mux:
@@ -503,8 +502,8 @@ static int dev_ctl(msg_t *msg)
 			return EOK;
 
 		case adc_dev_ctl__get_buffers:
-			dev_ctl.buffers.paddr0 = common.buffer0_paddr;
-			dev_ctl.buffers.paddr1 = common.buffer1_paddr;
+			dev_ctl.buffers.paddr = common.buffer_paddr;
+			dev_ctl.buffers.num = NUM_OF_BUFFERS;
 			dev_ctl.buffers.size = ADC_BUFFER_SIZE;
 			memcpy(msg->o.raw, &dev_ctl, sizeof(adc_dev_ctl_t));
 			return EOK;
