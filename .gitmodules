@@ -37,3 +37,6 @@
 [submodule "phoenix-builder"]
 	path = phoenix-builder
 	url = ssh://git.phoesys.com:29418/phoenix-builder
+[submodule "msp"]
+	path = msp
+	url = ssh://git.phoesys.com:29418/msp
