@@ -21,6 +21,8 @@ export KERNEL_CFLAGS=" -DUART_CONSOLE=3"
 export DEVICES_CFLAGS=" -DUART1=0 -DUART3=1 -DUART6=1 -DUART_CONSOLE=3 -DSPI3=1 -DSPI4=1"
 
 export PS_PROFILING_DISABLED=1
+export LCD_PRESENT=1
+export COSEM=0
 
 #
 # Project specific build
@@ -38,7 +40,7 @@ b_build() {
 
 b_image() {
 	b_log "Creating BeSmart image"
-	PROGS=("imxrt-multi" "dummyfs" "psh" "ad7779-driver")
+	PROGS=("imxrt-multi" "dummyfs" "ad7779-driver" "oled-driver")
 	METER_PROGS=("metersrv")
 
 	for prog in "${PROGS[@]}"; do
