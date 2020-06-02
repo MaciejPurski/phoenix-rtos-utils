@@ -26,9 +26,6 @@ export PS_PROFILING_DISABLED=1
 # Project specific build
 #
 b_build() {
-	b_log "Building project device drivers"
-	(cd devices && make $MAKEFLAGS $CLEAN all)
-
 	# NOTE: Programs are automatically installed into rootfs
 	b_log "Building meter-besmart.sh"
 	(./phoenix-builder/proj/meter-besmart.sh -j 9)
