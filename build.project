@@ -20,17 +20,13 @@ TARGET_SUBFAMILY=armv7-imxrt
 export KERNEL_CFLAGS=" -DUART_CONSOLE=3"
 export DEVICES_CFLAGS=" -DUART1=0 -DUART3=1 -DUART6=1 -DUART_CONSOLE=3 -DSPI3=1 -DSPI4=1"
 
-export PS_PROFILING_DISABLED=1
-export LCD_PRESENT=1
-export COSEM=0
-
 #
 # Project specific build
 #
 b_build() {
 	# NOTE: Programs are automatically installed into rootfs
 	b_log "Building meter-besmart.sh"
-	(./phoenix-builder/proj/meter-besmart.sh -j 9)
+	. phoenix-builder/proj/meter-besmart.sh -j 9
 
 	b_log "Building libmeter"
 	make -C libmeter all install -j 9
@@ -40,17 +36,11 @@ b_build() {
 
 b_image() {
 	b_log "Creating BeSmart image"
-	PROGS=("imxrt-multi" "dummyfs" "ad7779-driver" "oled-driver")
-	METER_PROGS=("metersrv")
+	PROGS=("imxrt-multi" "dummyfs" "ad7779-driver" "oled-driver" "metersrv")
 
 	for prog in "${PROGS[@]}"; do
 		KERNEL_ARGS+=" X${prog}"
-		PROG_PATHS+=" _build/${TARGET}/prog/${prog}"
-	done
-
-	for prog in "${METER_PROGS[@]}"; do
-		KERNEL_ARGS+=" X${prog};-u"
-		PROG_PATHS+=" _build/${TARGET}/meter-imxrt/prog/${prog}"
+		PROG_PATHS+=" _build/${TARGET}/prog.stripped/${prog}"
 	done
 
 	./phoenix-rtos-kernel/scripts/mkimg-imxrt.sh "_build/phoenix-${TARGET}.elf" "${KERNEL_ARGS}" "_build/phoenix-${TARGET}.img" \
