@@ -1,0 +1,26 @@
+# Wait for device
+WAIT 0x1fc9 0x0135
+ERROR_STATUS
+
+WRITE_REGISTER 0x400ac040 0x200007 32
+WRITE_REGISTER 0x400ac044 0xaaaaffff 32
+
+WRITE_FILE F "phoenix-armv7m7-imxrt106x.img" 0x100 0x100
+
+# Jump to ivt_addr
+JUMP_ADDRESS 0x1050
+
+WAIT 0x1fc9 0x0135
+
+WRITE_FILE F "cpio_archive" 0 0
+
+WRITE_FILE F "cpio_ptable.img" 0 0x3ff000
+
+WRITE_REGISTER -7 0 8
+
+WRITE_FILE F "cpio_archive" 0 0
+
+WRITE_FILE F "cpio_ptable.img" 0 0x3fff000
+
+
+
