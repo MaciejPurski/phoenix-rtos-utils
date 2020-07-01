@@ -13,6 +13,8 @@
 
 
 #include <phoenix/arch/imxrt.h>
+#include <sys/types.h>
+#include <stdint.h>
 
 
 typedef struct {
