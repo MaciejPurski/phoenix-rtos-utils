@@ -1,7 +1,7 @@
 #
 # Phoenix-RTOS
 #
-# flash driver
+#  i.MX RT cpio library
 #
 # Copyright 2019 Phoenix Systems
 # Author: Hubert Buczynski

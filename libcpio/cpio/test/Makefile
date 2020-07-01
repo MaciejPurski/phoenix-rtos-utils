@@ -1,7 +1,7 @@
 #
 # Phoenix-RTOS
 #
-#  i.MX RT storage tests
+#  i.MX RT cpio tests
 #
 # Copyright 2020 Phoenix Systems
 # Author: Hubert Buczynski
