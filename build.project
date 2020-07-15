@@ -12,21 +12,32 @@
 
 set -e
 
+#
+# phoenix-rtos-build variables
+#
+export PROJECT=besmart
+
 CROSS=arm-phoenix-
 TARGET=armv7m7-imxrt106x
 TARGET_FAMILY=armv7m7
 TARGET_SUBFAMILY=armv7-imxrt
-export PLATFORM_NAME=rt-cm7
 
 export KERNEL_CFLAGS=" -DUART_CONSOLE=3"
 export DEVICES_CFLAGS=" -DUART1=0 -DUART3=1 -DUART6=1 -DUART_CONSOLE=3 -DSPI1=1 -DSPI3=1 -DSPI4=1"
 export LDFLAGS+=-nostdlib
 
+#
+# phoenix-builder variables
+#
+export PSMK_BUILD_TARGET_TYPE=phrtos3
+export PLATFORM_NAME=rt-cm7
 export PS_PROFILING_DISABLED=1
+export PSMK_NO_LTO=yes
 export LCD_PRESENT=1
 export PS_COSEM=0
 export PS_RELAY=1
 export PHASE_CNT=1
+
 
 #
 # Project specific build
