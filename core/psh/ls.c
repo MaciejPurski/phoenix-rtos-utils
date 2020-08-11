@@ -452,7 +452,7 @@ static void ls_freePaths(char **paths, size_t npaths)
 
 	if (paths == NULL)
 		return;
-	
+
 	for (i = 0; i < npaths; i++)
 		free(paths[i]);
 
