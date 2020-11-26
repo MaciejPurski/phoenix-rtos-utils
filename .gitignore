@@ -1,4 +1,8 @@
-_build/
-_boot/
-_fs/
+.gitignore
+_fs/*
+_build/*
+_boot/*
+.DS_Store
+
 .vscode/
+
