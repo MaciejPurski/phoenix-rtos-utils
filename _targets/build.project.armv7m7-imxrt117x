@@ -1,16 +1,16 @@
 #!/bin/bash
 #
-# Shell script for building armv7m7-imxrt105x, armv7m7-imxrt106x project
+# Shell script for building armv7m7-imxrt117x project
 #
-# Copyright 2018, 2019, 2020 Phoenix Systems
+# Copyright 2018, 2019, 2020, 2021 Phoenix Systems
 # Author: Kaja Swat, Aleksander Kaminski, Pawel Pisarczyk, Lukasz Kosinski, Hubert Buczynski
 #
 [ "${BASH_SOURCE[0]}" -ef "$0" ] && echo "You should source this script, not execute it!" && exit 1
 
 # TODO: remove CFLAGS and LDFLAGS and use ones from phoenix-rtos-build/Makefile.armv7m
 CROSS=arm-phoenix-
-CFLAGS="-Os -Wall -Wstrict-prototypes -g -mcpu=cortex-m7 -mtune=cortex-m7 -mfloat-abi=hard -mthumb\
-	-fomit-frame-pointer -mno-unaligned-access -fdata-sections -ffunction-sections -fno-builtin"
+#CFLAGS="-Os -Wall -Wstrict-prototypes -g -mcpu=cortex-m7 -mtune=cortex-m7 -mfloat-abi=hard -mthumb\
+#	-fomit-frame-pointer -mno-unaligned-access -fdata-sections -ffunction-sections -fno-builtin"
 
 
 LDFLAGS="-z max-page-size=0x1000"
@@ -59,7 +59,7 @@ b_mkscript() {
 		((poffs+=psz))
 	done
 
-	cat _targets/armv7m7-imxrt106x.plo >> "$PREFIX_BUILD/plo/script.plo"
+	cat _targets/armv7m7-imxrt117x.plo >> "$PREFIX_BUILD/plo/script.plo"
 	printf "\0" >> "$PREFIX_BUILD/plo/script.plo"
 }
 
@@ -84,13 +84,13 @@ b_build_target() {
 	b_log "Building plo"
 	(cd plo; make $MAKEFLAGS clean all)
 
+	cp "${PREFIX_PROG_STRIPPED}plo-ram-${TARGET_FAMILY}-${TARGET_SUBFAMILY}.img" _boot/
+	cp "phoenix-rtos-hostutils/psu/plo-ram-${TARGET_FAMILY}-${TARGET_SUBFAMILY}.sdp" _boot/
+
 	b_mkscript
 
 	b_log "Relink plo to include the new script"
 	(cd plo && make $MAKEFLAGS all)
-
-	cp "${PREFIX_PROG_STRIPPED}plo-ram-${TARGET_FAMILY}-${TARGET_SUBFAMILY}.img" _boot/
-	cp "phoenix-rtos-hostutils/psu/plo-ram-${TARGET_FAMILY}-${TARGET_SUBFAMILY}.sdp" _boot/
 }
 
 
