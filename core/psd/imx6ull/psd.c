@@ -445,6 +445,7 @@ int main(int argc, char **argv)
 
 	psd_common.run = 1;
 	psd_common.fcb = malloc(sizeof(fcb_t));
+	psd_common.dbbt = malloc(sizeof(dbbt_t));
 	psd_common.f = psd_common.files[0];
 	psd_common.oid = psd_common.oids[0];
 
